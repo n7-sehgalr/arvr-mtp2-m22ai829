@@ -22,6 +22,7 @@ def f():
             if num_phrase != num_suggestions:
                 error_index.append(i)
 
+        # Delete the cases where number of words and suggestsion don't match
         coords_list = np.delete(coords_list, [error_index])
         phrase_list = np.delete(phrase_list, [error_index])
         word_suggestions_list = np.delete(word_suggestions_list, [error_index])
@@ -50,8 +51,11 @@ def f():
         char_len = []
         stroke_len = []
         for i, coords in enumerate(word_coords_list):
+            # Skips entries where correct word is not in suggestions
             if word_list[i][1] in word_suggestion_flat[i]:
                 print('index: {} out of {}'.format(i,len(word_coords_list)))
+
+                # Skips entries where too few coordinates detected for a gesture
                 if len(coords)<4:
                     print('empty or less than 3')
                     continue
