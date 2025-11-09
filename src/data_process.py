@@ -3,11 +3,12 @@ import numpy as np
 import collections
 from utils import *
 from multiprocessing import Process
+import os
 
 
 def f():
     for type_ in [2]:
-        fname = 'data/data_all.pkl'
+        fname = "data/data_all.pkl"
         output = pd.read_pickle(fname)
         coords_list = output['lift on coords'].to_numpy()
         phrase_list = output['phrase'].to_numpy()
@@ -17,8 +18,8 @@ def f():
         # check for number of words and number of suggestions
         error_index = []
         for i in range(np.shape(phrase_list)[0]):
-            num_phrase = np.shape(phrase_list[i])[0]
-            num_suggestions = np.shape(word_suggestions_list[i])[0]
+            num_phrase = len(phrase_list[i])
+            num_suggestions = len(word_suggestions_list[i])
             if num_phrase != num_suggestions:
                 error_index.append(i)
 
@@ -96,7 +97,7 @@ def f():
         print('stroke : max {}, min {}, mean {}'.format(np.max(stroke_len), np.min(stroke_len), np.mean(stroke_len)))
         print('char : max {}, min {}, mean {}'.format(np.max(char_len),np.min(char_len),np.mean(char_len)))
         print('input data with shape : {}'.format(np.shape(coords_all)))
-        print('label data with shape : {}'.format(np.shape(label_all)))
+        print('label data with shape : {}'.format(len(label_all)))
         print('number of unique words: {}'.format(len(index_list)))
         print('number of trajectories: {}'.format(len(coords_all)))
         print('shape of one sequence : {}'.format(np.shape(coords_all[0])))

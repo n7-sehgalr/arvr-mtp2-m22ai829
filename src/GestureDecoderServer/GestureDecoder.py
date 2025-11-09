@@ -11,7 +11,7 @@ import arpa  # Python 3.4+
 import numpy as np
 import time
 
-models = arpa.loadf("./lm_mobile_word_3gram_small.arpa")
+models = arpa.loadf("./lm_mobile_word_3gram_large.arpa")
 lm_mix = models[0]  # ARPA files may contain several models.
 pre_predict = ''
 
