@@ -2,8 +2,8 @@ import tensorflow as tf
 from tensorflow import keras
 
 class CTCLoss(keras.losses.Loss):
-    def __init__(self, logits_time_major=False, blank_index=28,
-                 reduction=keras.losses.Reduction.AUTO, name='ctc_loss'):
+    def __init__(self, logits_time_major=False, blank_index=28, 
+                 reduction='sum_over_batch_size', name='ctc_loss'):
         super().__init__(reduction=reduction, name=name)
         self.logits_time_major = logits_time_major
         self.blank_index = blank_index

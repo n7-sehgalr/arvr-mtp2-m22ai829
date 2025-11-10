@@ -7,9 +7,8 @@ from tensorflow import keras
 def eval(SAVE_PATH,batch_size, log,label_pad, max_length, num_classes):
     input_data, label_data,seq_len_list,label_data_length = getDataTest(batch_size,label_pad, max_length, num_classes)
 
-    model = keras.models.load_model(SAVE_PATH,
-                                    custom_objects={'tf': tf, 'CTCLoss': CTCLoss, 'EditDistance': EditDistance})
-    val_logits = model(input_data)
+    model = keras.layers.TFSMLayer(SAVE_PATH, call_endpoint='serving_default')
+    val_logits = model(input_data)['output_0']
 
     dist_list_gd = []
     WER_list_gd = []
@@ -66,4 +65,3 @@ def eval(SAVE_PATH,batch_size, log,label_pad, max_length, num_classes):
 
     return [np.mean(np.array(dist_list_gd)),np.mean(np.array(WER_list_gd)),
             np.mean(np.array(dist_list_bs)),np.mean(np.array(WER_list_bs))]
-

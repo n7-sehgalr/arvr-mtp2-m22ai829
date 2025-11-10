@@ -77,7 +77,7 @@ def train_step(epoch, train1Data,model, optimizer,epoch_loss_avg, epoch_accuracy
 
 def test(batch_size,model, log,label_pad, max_length, num_classes):
     input_data, label_data,seq_len_list,label_data_length = getDataTest(batch_size,label_pad, max_length, num_classes)
-    val_logits = model(input_data)
+    val_logits = model([input_data])
     for _ in range(10):
         i = int(np.random.randint(0,len(label_data)))
         target = ''.join(
@@ -178,7 +178,7 @@ def train(input_shape2, num_classes, learning_rate,data,
 
         log.info("Epoch {:03d}: Loss: {:.3f}, Editdistance: {:.3}".format(epoch,epoch_loss_avg.result(),
                                                                          epoch_accuracy.result()))
-        epoch_loss_avg.reset_states()
+        epoch_loss_avg.reset_state()
         epoch_accuracy.reset_states()
         checkpoint_save(log, checkpoint, manager)
         validation(valid1Data, model, val_accuracy, log, start_time)
@@ -186,5 +186,4 @@ def train(input_shape2, num_classes, learning_rate,data,
         if epoch%20 == 0:
             test(batch_size, model, log,label_pad, max_length, num_classes)
 
-    model.save(SAVE_PATH)
-
+    model.export(SAVE_PATH)

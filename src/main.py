@@ -32,8 +32,8 @@ def init_logging(log_dir):
 def main(size,log,SAVE_PATH,model_size=400,layer_size = 2,drop_out= 0.2):
     data = getDataTrain1(label_pad,max_length,num_classes)
     train(input_dim, num_classes, learning_rate,data,
-          batch_size, size, EPOCHS, SAVE_PATH,
-          restore,log,max_length,num_classes,
+          batch_size, size, EPOCHS, SAVE_PATH, 
+          restore,log,max_length,label_pad,
           model_size=model_size,layer_size= layer_size,drop_out = drop_out)
 
 
@@ -45,14 +45,16 @@ if __name__ == "__main__":
     label_pad = 14
     input_dim = 39
     num_classes = 29
-    learning_rate = 0.0001
+    learning_rate = 0.00001 # Changed from 0.0001. It's often good practice to lower the learning rate when resuming training
     batch_size = 64
-    EPOCHS = 200
+    EPOCHS = 1 # Set to 1 to train for a single epoch after resuming from 200th epoch
     load_model = True
 
-    SAVE_PATH = datetime.now().strftime("%Y%m%d-%H%M%S")+'/'
+    # SAVE_PATH = datetime.now().strftime("%Y%m%d-%H%M%S")+'/'
+    #  To resume, point SAVE_PATH to the existing model directory
+    SAVE_PATH = '20251110-012452/' 
     monitor = 'val_loss'
-    restore = False
+    restore = True # Set to false when training from scratch
     drop_out = 0.2
 
     if not os.path.exists(SAVE_PATH):
