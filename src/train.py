@@ -1,5 +1,6 @@
 import tensorflow as tf
 from model import rnn_att_model, CTCLoss
+from transformer_model import build_transformer_model
 from tensorflow import keras
 from metrics import EditDistance
 from getData import tfdata1, getDataTest
@@ -125,7 +126,7 @@ def checkpoint_save(log, checkpoint, manager):
 
 def train(input_shape2, num_classes, learning_rate,data,
           batch_size, size, EPOCHS, SAVE_PATH,
-          restore,log,max_length,label_pad,
+          restore,log,max_length,label_pad, model_type,
           model_size,layer_size,drop_out):
 
     train1Data,valid1Data = tfdata1(data, batch_size, size)
@@ -133,13 +134,20 @@ def train(input_shape2, num_classes, learning_rate,data,
     number_train = len(train1Data)
     number_valid = len(valid1Data)
 
+    if model_type == 'transformer':
+        log.info('Using Transformer model.')
+        model = build_transformer_model(input_shape2=input_shape2, output_shape=num_classes, max_length=max_length, model_size=model_size, num_layers=layer_size)
+    else: # default to rnn
+        log.info('Using RNN model.')
+        model = rnn_att_model(input_shape2 = input_shape2, output_shape = num_classes, dropout = drop_out,num_units = model_size,num_layers=layer_size)
+
+
     log.info('number of train samples {}'.format(number_train))
     log.info('number of valid samples {}'.format(number_valid))
 
     # purpose: save and restore models
     checkpoint_path = SAVE_PATH +"training_checkpoints/"
 
-    model = rnn_att_model(input_shape2 = input_shape2, output_shape = num_classes, dropout = drop_out,num_units = model_size,num_layers=layer_size)
     model.summary()
     optimizer = keras.optimizers.RMSprop(learning_rate)
 

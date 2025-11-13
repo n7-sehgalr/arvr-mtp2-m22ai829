@@ -29,11 +29,11 @@ def init_logging(log_dir):
 
     return logging
 
-def main(size,log,SAVE_PATH,model_size=400,layer_size = 2,drop_out= 0.2):
+def main(size,log,SAVE_PATH,model_type,model_size=400,layer_size = 2,drop_out= 0.2):
     data = getDataTrain1(label_pad,max_length,num_classes)
     train(input_dim, num_classes, learning_rate,data,
-          batch_size, size, EPOCHS, SAVE_PATH, 
-          restore,log,max_length,label_pad,
+          batch_size, size, EPOCHS, SAVE_PATH,
+          restore,log,max_length,label_pad, model_type,
           model_size=model_size,layer_size= layer_size,drop_out = drop_out)
 
 
@@ -45,16 +45,17 @@ if __name__ == "__main__":
     label_pad = 14
     input_dim = 39
     num_classes = 29
-    learning_rate = 0.00001 # Changed from 0.0001. It's often good practice to lower the learning rate when resuming training
+    learning_rate = 0.0001 # Changed from 0.0001 to 0.00001. It's often good practice to lower the learning rate when resuming training
     batch_size = 64
-    EPOCHS = 1 # Set to 1 to train for a single epoch after resuming from 200th epoch
+    EPOCHS = 200 # Set to 1 to train for a single epoch after resuming from 200th epoch
+    model_type = 'transformer' # 'rnn' or 'transformer'
     load_model = True
 
-    # SAVE_PATH = datetime.now().strftime("%Y%m%d-%H%M%S")+'/'
+    SAVE_PATH = datetime.now().strftime("%Y%m%d-%H%M%S")+'/'
     #  To resume, point SAVE_PATH to the existing model directory
-    SAVE_PATH = '20251110-012452/' 
+    # SAVE_PATH = '20251110-012452/' 
     monitor = 'val_loss'
-    restore = True # Set to false when training from scratch
+    restore = False # Set to false when training from scratch
     drop_out = 0.2
 
     if not os.path.exists(SAVE_PATH):
@@ -63,5 +64,5 @@ if __name__ == "__main__":
 
     size = -1
 
-    main(size, log, SAVE_PATH)
+    main(size, log, SAVE_PATH, model_type)
     eval(SAVE_PATH, batch_size, log, label_pad, max_length, num_classes)
