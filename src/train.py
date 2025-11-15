@@ -2,7 +2,7 @@ import tensorflow as tf
 from model import rnn_att_model, CTCLoss
 from transformer_model import build_transformer_model
 from tensorflow import keras
-from metrics import EditDistance
+from metrics import EditDistance, SequenceAccuracy
 from getData import tfdata1, getDataTest
 import numpy as np
 import os
@@ -60,25 +60,32 @@ def grad(model, inputs, targets,seq_len_list,label_data_length):
   return loss_value, tape.gradient(loss_value, model.trainable_variables)
 
 # @tf.function
-def train_step(epoch, train1Data,model, optimizer,epoch_loss_avg, epoch_accuracy, log):
+def train_step(epoch, train1Data,model, optimizer,epoch_loss_avg, epoch_edit_dist, epoch_seq_acc, log, train_summary_writer):
     # log.info('---------------------------- Start Train Epoch {} ---------------------------------\n'.format(epoch))
     for step, (x_batch_train, y_batch_train,seq_len_list,label_data_length) in enumerate(train1Data):
         loss_value, grads = grad(model, x_batch_train, y_batch_train,seq_len_list,label_data_length)
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
         epoch_loss_avg.update_state(loss_value)
         y_pred = model(x_batch_train, training=True)
-        epoch_accuracy.update_state(y_batch_train, y_pred,seq_len_list,label_data_length)
+        epoch_edit_dist.update_state(y_batch_train, y_pred,seq_len_list,label_data_length)
+        epoch_seq_acc.update_state(y_batch_train, y_pred,seq_len_list,label_data_length)
 
         if step % 50 == 0:
-            log.info("Step {:03d}: Loss: {:.3f}, Editdistance: {:.3}".format(step,
+            log.info("Step {:03d}: Loss: {:.3f}, EditDistance: {:.3%}".format(step,
                                                                              epoch_loss_avg.result(),
-                                                                             epoch_accuracy.result()))
+                                                                             epoch_edit_dist.result()))
+            with train_summary_writer.as_default():
+                tf.summary.scalar('loss', epoch_loss_avg.result(), step=optimizer.iterations)
+                tf.summary.scalar('edit_distance', epoch_edit_dist.result(), step=optimizer.iterations)
+                tf.summary.scalar('sequence_accuracy', epoch_seq_acc.result(), step=optimizer.iterations)
     log.info('---------------------------- Finish Train Epoch {} ---------------------------------\n'.format(epoch))
 
 
-def test(batch_size,model, log,label_pad, max_length, num_classes):
+def test(batch_size,model, log,label_pad, max_length, num_classes, summary_writer, step):
     input_data, label_data,seq_len_list,label_data_length = getDataTest(batch_size,label_pad, max_length, num_classes)
+    start_time = time.time()
     val_logits = model([input_data])
+    inference_time = time.time() - start_time
     for _ in range(10):
         i = int(np.random.randint(0,len(label_data)))
         target = ''.join(
@@ -105,16 +112,31 @@ def test(batch_size,model, log,label_pad, max_length, num_classes):
         log.info('Predict Greedy Search : "{}"'.format(predict_gd))
         log.info('Levenshtein Distance  :  {}\n'.format(dist))
         log.info('Predict Beam Search   : "{}"\n'.format(predict_bs))
+    
+    with summary_writer.as_default():
+        tf.summary.scalar('inference_time_seconds', inference_time, step=step)
 
 # @tf.function
-def validation(valid1Data,model, val_accuracy, log, start_time):
+def validation(valid1Data, model, val_edit_dist, val_seq_acc, val_loss_avg, log, start_time):
     for x_batch_val, y_batch_val, seq_len_list,label_data_length in valid1Data:
         val_logits = model(x_batch_val, training=False)
+        val_loss = loss(model, x_batch_val, y_batch_val, seq_len_list, label_data_length, training=False)
         # Update val metrics
-        val_accuracy.update_state(y_batch_val, val_logits, seq_len_list,label_data_length)
-    val_acc = val_accuracy.result()
-    val_accuracy.reset_states()
-    log.info("Validation Editdistance: %.4f" % (float(val_acc)))
+        val_loss_avg.update_state(val_loss)
+        val_edit_dist.update_state(y_batch_val, val_logits, seq_len_list,label_data_length)
+        val_seq_acc.update_state(y_batch_val, val_logits, seq_len_list, label_data_length)
+
+    val_ed = val_edit_dist.result()
+    val_sa = val_seq_acc.result()
+    val_l = val_loss_avg.result()
+
+    val_edit_dist.reset_state()
+    val_seq_acc.reset_state()
+    val_loss_avg.reset_state()
+
+    log.info("Validation Loss: %.4f, Validation EditDistance: %.4f, Validation SequenceAccuracy: %.4f" % (float(val_l), float(val_ed), float(val_sa)))
+    return val_l, val_ed, val_sa
+
     # log.info("Time taken: %.2fs\n" % (time.time() - start_time))
 
 def checkpoint_save(log, checkpoint, manager):
@@ -123,6 +145,11 @@ def checkpoint_save(log, checkpoint, manager):
         save_path = manager.save()
         log.info("Saved checkpoint for ckpt step {}: {}".format(int(checkpoint.step), save_path))
 
+def log_model_summary(model, summary_writer):
+    with summary_writer.as_default():
+        string_list = []
+        model.summary(print_fn=lambda x: string_list.append(x))
+        tf.summary.text('model_summary', '\n'.join(string_list), step=0)
 
 def train(input_shape2, num_classes, learning_rate,data,
           batch_size, size, EPOCHS, SAVE_PATH,
@@ -135,10 +162,10 @@ def train(input_shape2, num_classes, learning_rate,data,
     number_valid = len(valid1Data)
 
     if model_type == 'transformer':
-        log.info('Using Transformer model.')
+        log.info(f'Using Transformer model with {layer_size} layers.')
         model = build_transformer_model(input_shape2=input_shape2, output_shape=num_classes, max_length=max_length, model_size=model_size, num_layers=layer_size)
     else: # default to rnn
-        log.info('Using RNN model.')
+        log.info(f'Using RNN model with {layer_size} layers.')
         model = rnn_att_model(input_shape2 = input_shape2, output_shape = num_classes, dropout = drop_out,num_units = model_size,num_layers=layer_size)
 
 
@@ -147,6 +174,14 @@ def train(input_shape2, num_classes, learning_rate,data,
 
     # purpose: save and restore models
     checkpoint_path = SAVE_PATH +"training_checkpoints/"
+    
+    # TensorBoard setup
+    train_log_dir = SAVE_PATH + 'logs/train'
+    val_log_dir = SAVE_PATH + 'logs/val'
+    train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+    val_summary_writer = tf.summary.create_file_writer(val_log_dir)
+
+    log_model_summary(model, train_summary_writer)
 
     model.summary()
     optimizer = keras.optimizers.RMSprop(learning_rate)
@@ -176,22 +211,48 @@ def train(input_shape2, num_classes, learning_rate,data,
 
         start_time = time.time()
 
+        # Metrics
         epoch_loss_avg = tf.keras.metrics.Mean()
-        epoch_accuracy = EditDistance()
-        val_accuracy = EditDistance()
-        train_step(epoch, train1Data,model, optimizer,epoch_loss_avg, epoch_accuracy, log)
+        epoch_edit_dist = EditDistance()
+        epoch_seq_acc = SequenceAccuracy()
+        
+        val_loss_avg = tf.keras.metrics.Mean()
+        val_edit_dist = EditDistance()
+        val_seq_acc = SequenceAccuracy()
+
+        train_step(epoch, train1Data,model, optimizer,epoch_loss_avg, epoch_edit_dist, epoch_seq_acc, log, train_summary_writer)
+        
+        epoch_train_time = time.time() - start_time
 
         train_loss_results.append(epoch_loss_avg.result())
-        train_accuracy_results.append(epoch_accuracy.result())
+        train_accuracy_results.append(epoch_edit_dist.result())
 
-        log.info("Epoch {:03d}: Loss: {:.3f}, Editdistance: {:.3}".format(epoch,epoch_loss_avg.result(),
-                                                                         epoch_accuracy.result()))
+        log.info("Epoch {:03d}: Loss: {:.3f}, EditDistance: {:.3%}, SeqAccuracy: {:.3%}".format(epoch, epoch_loss_avg.result(), epoch_edit_dist.result(), epoch_seq_acc.result()))
+        
+        # Log training metrics for the epoch
+        with train_summary_writer.as_default():
+            tf.summary.scalar('epoch_loss', epoch_loss_avg.result(), step=epoch)
+            tf.summary.scalar('epoch_edit_distance', epoch_edit_dist.result(), step=epoch)
+            tf.summary.scalar('epoch_sequence_accuracy', epoch_seq_acc.result(), step=epoch)
+            tf.summary.scalar('epoch_training_time_seconds', epoch_train_time, step=epoch)
+            # Log weights and gradients
+            for layer in model.layers:
+                for weight in layer.weights:
+                    tf.summary.histogram(f'{layer.name}/{weight.name}', weight, step=epoch)
+
         epoch_loss_avg.reset_state()
-        epoch_accuracy.reset_states()
+        epoch_edit_dist.reset_state()
+        epoch_seq_acc.reset_state()
+
         checkpoint_save(log, checkpoint, manager)
-        validation(valid1Data, model, val_accuracy, log, start_time)
+        val_loss, val_ed, val_sa = validation(valid1Data, model, val_edit_dist, val_seq_acc, val_loss_avg, log, start_time)
+        with val_summary_writer.as_default():
+            tf.summary.scalar('epoch_loss', val_loss, step=epoch)
+            tf.summary.scalar('epoch_edit_distance', val_ed, step=epoch)
+            tf.summary.scalar('epoch_sequence_accuracy', val_sa, step=epoch)
+
         log.info("Time taken: %.2fs\n" % (time.time() - start_time))
         if epoch%20 == 0:
-            test(batch_size, model, log,label_pad, max_length, num_classes)
+            test(batch_size, model, log,label_pad, max_length, num_classes, val_summary_writer, epoch)
 
     model.export(SAVE_PATH)

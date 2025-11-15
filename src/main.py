@@ -19,23 +19,21 @@ def init_logging(log_dir):
     if os.path.isfile(log_file):
         os.remove(log_file)
 
-    logging.basicConfig(
-        filename=log_file,
-        level=logging_level,
-        format='[[%(asctime)s]] %(message)s',
-        datefmt='%m/%d/%Y %I:%M:%S %p'
-    )
-    logging.getLogger().addHandler(logging.StreamHandler())
+    # Get the root logger and remove all existing handlers
+    root_logger = logging.getLogger()
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    # Add a handler to write to the log file
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(logging.Formatter('[[%(asctime)s]] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p'))
+    root_logger.addHandler(file_handler)
+
+    # Add a handler to stream to the console
+    root_logger.addHandler(logging.StreamHandler())
+    root_logger.setLevel(logging_level)
 
     return logging
-
-def main(size,log,SAVE_PATH,model_type,model_size=400,layer_size = 2,drop_out= 0.2):
-    data = getDataTrain1(label_pad,max_length,num_classes)
-    train(input_dim, num_classes, learning_rate,data,
-          batch_size, size, EPOCHS, SAVE_PATH,
-          restore,log,max_length,label_pad, model_type,
-          model_size=model_size,layer_size= layer_size,drop_out = drop_out)
-
 
 
 
@@ -50,19 +48,40 @@ if __name__ == "__main__":
     EPOCHS = 200 # Set to 1 to train for a single epoch after resuming from 200th epoch
     model_type = 'transformer' # 'rnn' or 'transformer'
     load_model = True
-
-    SAVE_PATH = datetime.now().strftime("%Y%m%d-%H%M%S")+'/'
-    #  To resume, point SAVE_PATH to the existing model directory
-    # SAVE_PATH = '20251110-012452/' 
     monitor = 'val_loss'
     restore = False # Set to false when training from scratch
     drop_out = 0.2
-
-    if not os.path.exists(SAVE_PATH):
-        os.makedirs(SAVE_PATH)
-    log = init_logging(SAVE_PATH)
-
     size = -1
 
-    main(size, log, SAVE_PATH, model_type)
-    eval(SAVE_PATH, batch_size, log, label_pad, max_length, num_classes)
+    # --- Experiment Loop ---
+    experiments = {
+        "rnn_2_layers": {
+            "model_type": "rnn",
+            "model_size": 400,
+            "layer_size": 2,
+            "drop_out": 0.2
+        },
+        "transformer_2_layers": {
+            "model_type": "transformer",
+            "model_size": 512,
+            "layer_size": 2,
+            "drop_out": 0.1 # Dropout is inside MultiHeadAttention for transformer
+        },
+        "transformer_6_layers": {
+            "model_type": "transformer",
+            "model_size": 512,
+            "layer_size": 6,
+            "drop_out": 0.1
+        }
+    }
+
+    data = getDataTrain1(label_pad, max_length, num_classes)
+
+    for exp_name, config in experiments.items():
+        print(f"\n{'='*20} RUNNING EXPERIMENT: {exp_name} {'='*20}")
+        SAVE_PATH = f"models/{datetime.now().strftime('%Y%m%d-%H%M%S')}_{exp_name}/"
+        if not os.path.exists(SAVE_PATH):
+            os.makedirs(SAVE_PATH)
+        log = init_logging(SAVE_PATH)
+        train(input_dim, num_classes, learning_rate, data, batch_size, size, EPOCHS, SAVE_PATH, restore, log, max_length, label_pad, **config)
+        eval(SAVE_PATH, batch_size, log, label_pad, max_length, num_classes)

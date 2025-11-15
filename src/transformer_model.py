@@ -35,18 +35,23 @@ class TransformerEncoder(layers.Layer):
 class PositionalEmbedding(layers.Layer):
     def __init__(self, sequence_length, input_dim, output_dim, **kwargs):
         super().__init__(**kwargs)
-        self.position_embeddings = layers.Embedding(
-            input_dim=sequence_length, output_dim=output_dim
-        )
         self.dense_input = layers.Dense(output_dim)
         self.sequence_length = sequence_length
         self.input_dim = input_dim
         self.output_dim = output_dim
 
+        position = tf.range(sequence_length, dtype=tf.float32)[:, tf.newaxis]
+        div_term = tf.exp(tf.range(0, output_dim, 2, dtype=tf.float32) * -(tf.math.log(10000.0) / output_dim))
+        
+        self.positional_encoding = tf.Variable(tf.zeros((sequence_length, output_dim)), trainable=False)
+        
+        self.positional_encoding[:, 0::2].assign(tf.sin(position * div_term))
+
+        self.positional_encoding[:, 1::2].assign(tf.cos(position * div_term))
+
     def call(self, inputs):
         length = tf.shape(inputs)[1]
-        positions = tf.range(start=0, limit=length, delta=1)
-        embedded_positions = self.position_embeddings(positions)
+        embedded_positions = self.positional_encoding[:length, :]
         embedded_inputs = self.dense_input(inputs)
         return embedded_inputs + embedded_positions
 

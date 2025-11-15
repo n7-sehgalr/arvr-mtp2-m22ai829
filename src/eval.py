@@ -5,6 +5,7 @@ from jiwer import wer
 from tensorflow import keras
 
 def eval(SAVE_PATH,batch_size, log,label_pad, max_length, num_classes):
+    summary_writer = tf.summary.create_file_writer(SAVE_PATH + 'logs/eval')
     input_data, label_data,seq_len_list,label_data_length = getDataTest(batch_size,label_pad, max_length, num_classes)
 
     model = keras.layers.TFSMLayer(SAVE_PATH, call_endpoint='serving_default')
@@ -62,6 +63,13 @@ def eval(SAVE_PATH,batch_size, log,label_pad, max_length, num_classes):
 
     log.info('Mean CER Beam Search: {}'.format(np.mean(np.array(dist_list_bs))))
     log.info('Mean WER Beam Search:  {}'.format(np.mean(np.array(WER_list_bs))))
+
+    with summary_writer.as_default():
+        tf.summary.scalar('final_cer_greedy', np.mean(np.array(dist_list_gd)), step=0)
+        tf.summary.scalar('final_wer_greedy', np.mean(np.array(WER_list_gd)), step=0)
+        tf.summary.scalar('final_cer_beam_search', np.mean(np.array(dist_list_bs)), step=0)
+        tf.summary.scalar('final_wer_beam_search', np.mean(np.array(WER_list_bs)), step=0)
+
 
     return [np.mean(np.array(dist_list_gd)),np.mean(np.array(WER_list_gd)),
             np.mean(np.array(dist_list_bs)),np.mean(np.array(WER_list_bs))]
