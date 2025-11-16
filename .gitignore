@@ -6,3 +6,6 @@ notebooks/
 .DS_Store
 *.arpa
 20251110-012452/
+20251111-205247
+*.txt
+models/
