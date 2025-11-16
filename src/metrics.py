@@ -17,25 +17,31 @@ class SequenceAccuracy(keras.metrics.Metric):
         decoded, _ = tf.nn.ctc_greedy_decoder(
             inputs=tf.transpose(y_pred, perm=[1, 0, 2]),
             sequence_length=logit_length)
-        y_pred = self.to_dense(decoded[0])
+        
+        # Convert sparse decoded tensor to dense and ensure it's a TF tensor
+        y_pred_decoded = tf.sparse.to_dense(decoded[0], default_value=0)
+        y_pred_decoded = tf.cast(y_pred_decoded, y_true.dtype)
+
+        # Pad the shorter tensor to match the length of the longer one
+        y_true_shape = tf.shape(y_true)
+        y_pred_shape = tf.shape(y_pred_decoded)
+        max_len = tf.maximum(y_true_shape[1], y_pred_shape[1])
+        y_true_padded = tf.pad(y_true, [[0, 0], [0, max_len - y_true_shape[1]]])
+        y_pred_padded = tf.pad(y_pred_decoded, [[0, 0], [0, max_len - y_pred_shape[1]]])
+
         num_errors = tf.math.reduce_any(
-            tf.math.not_equal(y_true, y_pred), axis=1)
+            tf.math.not_equal(y_true_padded, y_pred_padded), axis=1)
         num_errors = tf.cast(num_errors, tf.float32)
         num_errors = tf.reduce_sum(num_errors)
-        batch_size = tf.cast(tf.shape(y_pred)[0], tf.float32)
+        batch_size = tf.cast(tf.shape(y_true)[0], tf.float32)
         self.total.assign_add(batch_size)
         self.count.assign_add(batch_size - num_errors)
 
     def result(self):
         return self.count / self.total
 
-    def to_dense(tensor):
-        # tensor = tf.sparse.reset_shape(tensor, shape)
+    def to_dense(self, tensor):
         tensor = tf.sparse.to_dense(tensor, default_value=0)
-        tensor = tf.cast(tensor, tf.int32).numpy()
-        tensor = np.transpose(tensor)
-        tensor = tensor[~np.all(tensor == 0, axis=1)]
-        tensor = tf.transpose(tensor)
         return tensor
 
     def reset_states(self):
