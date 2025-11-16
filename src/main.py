@@ -55,23 +55,31 @@ if __name__ == "__main__":
 
     # --- Experiment Loop ---
     experiments = {
-        "rnn_2_layers": {
-            "model_type": "rnn",
-            "model_size": 400,
-            "layer_size": 2,
-            "drop_out": 0.2
-        },
-        "transformer_2_layers": {
-            "model_type": "transformer",
-            "model_size": 512,
-            "layer_size": 2,
-            "drop_out": 0.1 # Dropout is inside MultiHeadAttention for transformer
-        },
-        "transformer_6_layers": {
-            "model_type": "transformer",
-            "model_size": 512,
-            "layer_size": 6,
-            "drop_out": 0.1
+        # "rnn_2_layers": {
+        #     "model_type": "rnn",
+        #     "model_size": 400,
+        #     "layer_size": 2,
+        #     "drop_out": 0.2
+        # },
+        # "transformer_2_layers": {
+        #     "model_type": "transformer",
+        #     "model_size": 512,
+        #     "layer_size": 2,
+        #     "drop_out": 0.1 # Dropout is inside MultiHeadAttention for transformer
+        # },
+        # "transformer_6_layers": {
+        #     "model_type": "transformer",
+        #     "model_size": 512,
+        #     "layer_size": 6,
+        #     "drop_out": 0.1
+        # },
+        "transformer_tf_2_layers": {
+            "model_type": "transformer_tf",
+            "d_model": 128,
+            "layer_size": 2, # num_layers
+            "num_heads": 8,
+            "d_ff": 512,
+            "drop_out": 0.25 # Increased from 0.1. Experiment with values like 0.2, 0.25, or 0.3
         }
     }
 

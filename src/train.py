@@ -2,6 +2,7 @@ import tensorflow as tf
 from model import rnn_att_model, CTCLoss
 from transformer_model import build_transformer_model
 from tensorflow import keras
+from transformer_tf import create_transformer_model
 from metrics import EditDistance, SequenceAccuracy
 from getData import tfdata1, getDataTest
 import numpy as np
@@ -154,7 +155,7 @@ def log_model_summary(model, summary_writer):
 def train(input_shape2, num_classes, learning_rate,data,
           batch_size, size, EPOCHS, SAVE_PATH,
           restore,log,max_length,label_pad, model_type,
-          model_size,layer_size,drop_out):
+          **kwargs):
 
     train1Data,valid1Data = tfdata1(data, batch_size, size)
 
@@ -162,11 +163,23 @@ def train(input_shape2, num_classes, learning_rate,data,
     number_valid = len(valid1Data)
 
     if model_type == 'transformer':
-        log.info(f'Using Transformer model with {layer_size} layers.')
-        model = build_transformer_model(input_shape2=input_shape2, output_shape=num_classes, max_length=max_length, model_size=model_size, num_layers=layer_size)
+        log.info(f"Using Transformer model with {kwargs['layer_size']} layers.")
+        model = build_transformer_model(input_shape2=input_shape2, output_shape=num_classes, max_length=max_length, model_size=kwargs['model_size'], num_layers=kwargs['layer_size'])
+    elif model_type == 'transformer_tf':
+        log.info(f"Using transformer_tf model with {kwargs['layer_size']} layers.")
+        model = create_transformer_model(
+            input_shape=(None, input_shape2),
+            d_model=kwargs['d_model'],
+            num_layers=kwargs['layer_size'],
+            num_heads=kwargs['num_heads'],
+            d_ff=kwargs['d_ff'],
+            dropout=kwargs['drop_out'],
+            max_seq_length=max_length,
+            num_classes=num_classes
+        )
     else: # default to rnn
-        log.info(f'Using RNN model with {layer_size} layers.')
-        model = rnn_att_model(input_shape2 = input_shape2, output_shape = num_classes, dropout = drop_out,num_units = model_size,num_layers=layer_size)
+        log.info(f"Using RNN model with {kwargs['layer_size']} layers.")
+        model = rnn_att_model(input_shape2 = input_shape2, output_shape = num_classes, dropout = kwargs['drop_out'],num_units = kwargs['model_size'],num_layers=kwargs['layer_size'])
 
 
     log.info('number of train samples {}'.format(number_train))
@@ -184,7 +197,7 @@ def train(input_shape2, num_classes, learning_rate,data,
     log_model_summary(model, train_summary_writer)
 
     model.summary()
-    optimizer = keras.optimizers.RMSprop(learning_rate)
+    optimizer = keras.optimizers.Adam(learning_rate=learning_rate)
 
     checkpoint = tf.train.Checkpoint(step = tf.Variable(1),
                                      model = model,
