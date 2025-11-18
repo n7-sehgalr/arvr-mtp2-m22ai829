@@ -8,8 +8,11 @@ def eval(SAVE_PATH,batch_size, log,label_pad, max_length, num_classes):
     summary_writer = tf.summary.create_file_writer(SAVE_PATH + 'logs/eval')
     input_data, label_data,seq_len_list,label_data_length = getDataTest(batch_size,label_pad, max_length, num_classes)
 
-    model = keras.layers.TFSMLayer(SAVE_PATH, call_endpoint='serving_default')
-    val_logits = model(input_data)['output_0']
+    # Load the model from the .keras file
+    model_path = os.path.join(SAVE_PATH, "model.keras")
+    log.info(f"Loading model from: {model_path}")
+    model = tf.keras.models.load_model(model_path, custom_objects={"CTCLoss": CTCLoss})
+    val_logits = model(input_data, training=False)
 
     dist_list_gd = []
     WER_list_gd = []

@@ -198,7 +198,7 @@ def train(input_shape2, num_classes, learning_rate,data,
 
     model.summary()
     # Add weight_decay for L2 regularization
-    optimizer = keras.optimizers.AdamW(learning_rate=learning_rate, weight_decay=1e-3)
+    optimizer = keras.optimizers.AdamW(learning_rate=learning_rate, weight_decay=1e-4)
 
     checkpoint = tf.train.Checkpoint(step = tf.Variable(1),
                                      model = model,
@@ -210,18 +210,22 @@ def train(input_shape2, num_classes, learning_rate,data,
     else:
         log.info('check point {}'.format(checkpoint_path))
     manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=5)
-    if restore:
-        checkpoint.restore(manager.latest_checkpoint)
-        if manager.latest_checkpoint:
-            log.info("Restored from {}".format(manager.latest_checkpoint))
-        else:
-            log.info("Initializing from scratch.")
+
+    initial_epoch = 0
+    if restore and manager.latest_checkpoint:
+        # Use expect_partial to avoid warnings if the optimizer state doesn't match
+        checkpoint.restore(manager.latest_checkpoint).expect_partial()
+        initial_epoch = int(checkpoint.step)
+        log.info(f"Restored from {manager.latest_checkpoint}. Resuming training from epoch {initial_epoch}.")
+    else:
+        log.info("Initializing from scratch.")
 
     #------------------ inspection train mode ------------------
     train_loss_results = []
     train_accuracy_results = []
     log.info('Save Path : {}'.format(SAVE_PATH))
-    for epoch in range(EPOCHS):
+    # The loop now starts from the restored epoch
+    for epoch in range(initial_epoch, initial_epoch + EPOCHS):
 
         start_time = time.time()
 
@@ -269,4 +273,7 @@ def train(input_shape2, num_classes, learning_rate,data,
         if epoch%20 == 0:
             test(batch_size, model, log,label_pad, max_length, num_classes, val_summary_writer, epoch)
 
-    model.export(SAVE_PATH)
+    # Save the model in the modern Keras v3 format.
+    model_save_path = os.path.join(SAVE_PATH, "model.keras")
+    model.save(model_save_path)
+    log.info(f"Model saved in Keras format to: {model_save_path}")
