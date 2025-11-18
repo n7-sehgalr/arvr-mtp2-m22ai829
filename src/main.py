@@ -45,7 +45,7 @@ if __name__ == "__main__":
     num_classes = 29
     learning_rate = 0.0001 # Changed from 0.0001 to 0.00001. It's often good practice to lower the learning rate when resuming training
     batch_size = 64
-    EPOCHS = 200 # Set to 1 to train for a single epoch after resuming from 200th epoch
+    EPOCHS = 500 # Set to 1 to train for a single epoch after resuming from 200th epoch
     model_type = 'transformer' # 'rnn' or 'transformer'
     load_model = True
     monitor = 'val_loss'

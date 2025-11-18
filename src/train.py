@@ -198,7 +198,7 @@ def train(input_shape2, num_classes, learning_rate,data,
 
     model.summary()
     # Add weight_decay for L2 regularization
-    optimizer = keras.optimizers.Adam(learning_rate=learning_rate, weight_decay=1e-4)
+    optimizer = keras.optimizers.AdamW(learning_rate=learning_rate, weight_decay=1e-3)
 
     checkpoint = tf.train.Checkpoint(step = tf.Variable(1),
                                      model = model,
