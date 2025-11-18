@@ -1,9 +1,12 @@
 import tensorflow as tf
 import numpy as np
 
+@tf.keras.utils.register_keras_serializable()
 class PositionalEncoding(tf.keras.layers.Layer):
     def __init__(self, max_seq_length, d_model, **kwargs):
         super(PositionalEncoding, self).__init__(**kwargs)
+        self.max_seq_length = max_seq_length
+        self.d_model = d_model
         
         # Based on the formula from "Attention Is All You Need"
         pos = np.arange(max_seq_length)[:, np.newaxis]
@@ -28,10 +31,21 @@ class PositionalEncoding(tf.keras.layers.Layer):
         """
         seq_len = tf.shape(x)[1]
         return x + self.pos_encoding[:, :seq_len, :]
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "max_seq_length": self.max_seq_length,
+            "d_model": self.d_model,
+        })
+        return config
 
+@tf.keras.utils.register_keras_serializable()
 class FeedForwardSubLayer(tf.keras.layers.Layer):
     def __init__(self, d_model, d_ff, **kwargs):
         super(FeedForwardSubLayer, self).__init__(**kwargs)
+        self.d_model = d_model
+        self.d_ff = d_ff
         self.fc1 = tf.keras.layers.Dense(d_ff, activation='relu')
         self.fc2 = tf.keras.layers.Dense(d_model)
 
@@ -40,9 +54,19 @@ class FeedForwardSubLayer(tf.keras.layers.Layer):
         x = self.fc2(x)
         return x
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "d_model": self.d_model,
+            "d_ff": self.d_ff,
+        })
+        return config
+
+@tf.keras.utils.register_keras_serializable()
 class EncoderLayer(tf.keras.layers.Layer):
     def __init__(self, d_model, num_heads, d_ff, dropout, **kwargs):
         super(EncoderLayer, self).__init__(**kwargs)
+        self.d_model, self.num_heads, self.d_ff, self.dropout = d_model, num_heads, d_ff, dropout
         self.self_attn = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=d_model//num_heads)
         self.ff_sublayer = FeedForwardSubLayer(d_model, d_ff)
         
@@ -62,11 +86,22 @@ class EncoderLayer(tf.keras.layers.Layer):
         out2 = self.norm2(out1 + ff_output)
         
         return out2
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "d_model": self.d_model,
+            "num_heads": self.num_heads,
+            "d_ff": self.d_ff,
+            "dropout": self.dropout,
+        })
+        return config
 
+@tf.keras.utils.register_keras_serializable()
 class TransformerEncoder(tf.keras.Model):
     def __init__(self, d_model, num_layers, num_heads, d_ff, dropout, max_seq_length, **kwargs):
         super(TransformerEncoder, self).__init__(**kwargs)
-        self.d_model = d_model
+        self.d_model, self.num_layers, self.num_heads, self.d_ff, self.dropout, self.max_seq_length = d_model, num_layers, num_heads, d_ff, dropout, max_seq_length
         # This Dense layer projects the input features into the model's dimension (d_model)
         self.input_projection = tf.keras.layers.Dense(d_model)
         self.positional_encoding = PositionalEncoding(max_seq_length, d_model)
@@ -82,14 +117,33 @@ class TransformerEncoder(tf.keras.Model):
             x = layer(x, training=training, mask=mask)
             
         return x
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "d_model": self.d_model,
+            "num_layers": self.num_layers,
+            "num_heads": self.num_heads,
+            "d_ff": self.d_ff,
+            "dropout": self.dropout,
+            "max_seq_length": self.max_seq_length,
+        })
+        return config
 
+@tf.keras.utils.register_keras_serializable()
 class RegressionHead(tf.keras.layers.Layer):
     def __init__(self, output_dim, **kwargs):
         super(RegressionHead, self).__init__(**kwargs)
+        self.output_dim = output_dim
         self.fc = tf.keras.layers.Dense(output_dim)
     
     def call(self, x):
         return self.fc(x)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({"output_dim": self.output_dim})
+        return config
 
 def create_transformer_model(input_shape, d_model, num_layers, num_heads, d_ff, dropout, max_seq_length, num_classes):
     """

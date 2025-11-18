@@ -51,7 +51,7 @@ def run_experiments():
     load_model = True
     monitor = 'val_loss'
     restore = False # Set to false when training from scratch
-    drop_out = 0.2
+    drop_out = 0.3
     size = -1
 
     # --- HParams Setup ---
