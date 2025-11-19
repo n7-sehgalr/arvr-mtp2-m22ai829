@@ -40,6 +40,67 @@ def levenshteinDistance(s1, s2):
         distances = distances_
     return distances[-1]/max(len(s1), len(s2))
 
+
+class CustomLearningRateSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    """
+    Custom learning rate schedule that decays in a piecewise linear fashion.
+    - Epochs 0-100: Decays linearly from initial_lr (e.g., 0.01) to mid_lr (e.g., 0.001).
+    - Epochs 101-300: Decays linearly from mid_lr to final_lr (e.g., 0.0001).
+    - Epochs > 300: Stays at final_lr.
+    """
+    def __init__(self, initial_learning_rate, mid_learning_rate, final_learning_rate, decay_steps_1, decay_steps_2):
+        super(CustomLearningRateSchedule, self).__init__()
+        self.initial_learning_rate = initial_learning_rate
+        self.mid_learning_rate = mid_learning_rate
+        self.final_learning_rate = final_learning_rate
+        self.decay_steps_1 = decay_steps_1
+        self.decay_steps_2 = decay_steps_2
+        self.total_decay_steps = decay_steps_1 + decay_steps_2
+
+    def __call__(self, step):
+        step = tf.cast(step, tf.float32)
+        
+        # First decay phase
+        lr_decay_1 = tf.keras.optimizers.schedules.PolynomialDecay(
+            initial_learning_rate=self.initial_learning_rate,
+            decay_steps=self.decay_steps_1,
+            end_learning_rate=self.mid_learning_rate,
+            power=1.0 # Linear decay
+        )
+        
+        # Second decay phase
+        lr_decay_2 = tf.keras.optimizers.schedules.PolynomialDecay(
+            initial_learning_rate=self.mid_learning_rate,
+            decay_steps=self.decay_steps_2,
+            end_learning_rate=self.final_learning_rate,
+            power=1.0 # Linear decay
+        )
+
+        return tf.cond(
+            step < self.decay_steps_1,
+            lambda: lr_decay_1(step),
+            lambda: tf.cond(
+                step < self.total_decay_steps,
+                lambda: lr_decay_2(step - self.decay_steps_1),
+                lambda: self.final_learning_rate
+            )
+        )
+
+class EpochAwareLearningRateSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    """
+    A wrapper that makes a step-based learning rate schedule epoch-based.
+    """
+    def __init__(self, schedule, steps_per_epoch):
+        super().__init__()
+        self.schedule = schedule
+        self.steps_per_epoch = tf.cast(steps_per_epoch, tf.float32)
+
+    def __call__(self, step):
+        # Convert the global step to an epoch number
+        epoch = step / self.steps_per_epoch
+        return self.schedule(epoch)
+
+
 # @tf.function
 def to_dense(tensor):
     tensor = tf.sparse.to_dense(tensor, default_value=0)
@@ -154,7 +215,7 @@ def log_model_summary(model, summary_writer):
 
 def train(input_shape2, num_classes, learning_rate,data,
           batch_size, size, EPOCHS, SAVE_PATH,
-          restore,log,max_length,label_pad, model_type,
+          restore,log,max_length,label_pad, model_type, log_histograms=False,
           **kwargs):
 
     train1Data,valid1Data = tfdata1(data, batch_size, size)
@@ -197,8 +258,20 @@ def train(input_shape2, num_classes, learning_rate,data,
     log_model_summary(model, train_summary_writer)
 
     model.summary()
-    # Add weight_decay for L2 regularization
-    optimizer = keras.optimizers.AdamW(learning_rate=learning_rate, weight_decay=1e-4)
+    
+    # Calculate steps per epoch to make the LR schedule epoch-aware
+    steps_per_epoch = number_train
+
+    # --- Setup Learning Rate Schedule and Optimizer ---
+    # The learning_rate from main.py is now the initial_learning_rate
+    step_based_schedule = CustomLearningRateSchedule(
+        initial_learning_rate=learning_rate,
+        mid_learning_rate=0.001,
+        final_learning_rate=0.0001,
+        decay_steps_1=100,
+        decay_steps_2=200)
+    epoch_aware_schedule = EpochAwareLearningRateSchedule(step_based_schedule, steps_per_epoch)
+    optimizer = keras.optimizers.AdamW(learning_rate=epoch_aware_schedule, weight_decay=1e-4)
 
     checkpoint = tf.train.Checkpoint(step = tf.Variable(1),
                                      model = model,
@@ -214,7 +287,12 @@ def train(input_shape2, num_classes, learning_rate,data,
     initial_epoch = 0
     if restore and manager.latest_checkpoint:
         # Use expect_partial to avoid warnings if the optimizer state doesn't match
-        checkpoint.restore(manager.latest_checkpoint).expect_partial()
+        # Removing .expect_partial() makes the restoration strict.
+        # This will raise an error if the optimizer state cannot be restored,
+        # which is what we want if the architectures don't match. We use expect_partial()
+        # when we intentionally change architecture and only want to restore model weights.
+        status = checkpoint.restore(manager.latest_checkpoint).expect_partial()
+        # status.assert_consumed() # This would raise an error if the optimizer state doesn't match.
         initial_epoch = int(checkpoint.step)
         log.info(f"Restored from {manager.latest_checkpoint}. Resuming training from epoch {initial_epoch}.")
     else:
@@ -245,18 +323,29 @@ def train(input_shape2, num_classes, learning_rate,data,
         train_loss_results.append(epoch_loss_avg.result())
         train_accuracy_results.append(epoch_edit_dist.result())
 
-        log.info("Epoch {:03d}: Loss: {:.3f}, EditDistance: {:.3%}, SeqAccuracy: {:.3%}".format(epoch, epoch_loss_avg.result(), epoch_edit_dist.result(), epoch_seq_acc.result()))
+        # Get current learning rate, handling both schedule and fixed value cases
+        if isinstance(optimizer.learning_rate, tf.keras.optimizers.schedules.LearningRateSchedule):
+            current_lr = optimizer.learning_rate(epoch)
+        else:
+            current_lr = optimizer.learning_rate
+
+        # Get the float value, whether current_lr is a tensor or already a float
+        lr_value = current_lr.numpy() if hasattr(current_lr, 'numpy') else current_lr
+
+        log.info("Epoch {:03d}: Loss: {:.3f}, EditDistance: {:.3%}, LR: {:.6f}".format(epoch, epoch_loss_avg.result(), epoch_edit_dist.result(), lr_value))
         
         # Log training metrics for the epoch
         with train_summary_writer.as_default():
+            tf.summary.scalar('learning_rate', current_lr, step=epoch)
             tf.summary.scalar('epoch_loss', epoch_loss_avg.result(), step=epoch)
             tf.summary.scalar('epoch_edit_distance', epoch_edit_dist.result(), step=epoch)
             tf.summary.scalar('epoch_sequence_accuracy', epoch_seq_acc.result(), step=epoch)
             tf.summary.scalar('epoch_training_time_seconds', epoch_train_time, step=epoch)
-            # Log weights and gradients
-            for layer in model.layers:
-                for weight in layer.weights:
-                    tf.summary.histogram(f'{layer.name}/{weight.name}', weight, step=epoch)
+            # Log weights (this is very I/O intensive and slows down training)
+            if log_histograms:
+                for layer in model.layers:
+                    for weight in layer.weights:
+                        tf.summary.histogram(f'{layer.name}/{weight.name}', weight, step=epoch)
 
         epoch_loss_avg.reset_state()
         epoch_edit_dist.reset_state()

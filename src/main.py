@@ -44,9 +44,9 @@ def run_experiments():
     label_pad = 14
     input_dim = 39
     num_classes = 29
-    learning_rate = 0.0005 # Changed from 0.0001 to 0.00001. It's often good practice to lower the learning rate when resuming training
+    learning_rate = 0.01 # This is now the INITIAL learning rate for the schedule.
     batch_size = 64
-    EPOCHS = 100 # Set to 1 to train for a single epoch after resuming from 200th epoch
+    EPOCHS = 300 # Total epochs for the schedule
     model_type = 'transformer' # 'rnn' or 'transformer'
     load_model = True
     monitor = 'val_loss'
@@ -91,12 +91,20 @@ def run_experiments():
         #     "layer_size": 6,
         #     "drop_out": 0.1
         # },
-        "transformer_tf_1_layers": {
+        # "transformer_tf_1_layers": {
+        #     "model_type": "transformer_tf",
+        #     "d_model": 128,
+        #     "layer_size": 1, # num_layers
+        #     "num_heads": 2,
+        #     "d_ff": 512,
+        #     "drop_out": 0.25 # Increased from 0.1. Experiment with values like 0.2, 0.25, or 0.3
+        # },
+        "transformer_tf_1_layers_small": {
             "model_type": "transformer_tf",
-            "d_model": 128,
+            "d_model": 64,
             "layer_size": 1, # num_layers
-            "num_heads": 8,
-            "d_ff": 512,
+            "num_heads": 2,
+            "d_ff": 256,
             "drop_out": 0.25 # Increased from 0.1. Experiment with values like 0.2, 0.25, or 0.3
         }
     }
@@ -106,6 +114,7 @@ def run_experiments():
     for exp_name, config in experiments.items():
         print(f"\n{'='*20} RUNNING EXPERIMENT: {exp_name} {'='*20}")
         SAVE_PATH = f"models/{datetime.now().strftime('%Y%m%d-%H%M%S')}_{exp_name}/"
+        # SAVE_PATH = f"models/20251119-091023_transformer_tf_1_layers_small/"
         if not os.path.exists(SAVE_PATH):
             os.makedirs(SAVE_PATH)
         log = init_logging(SAVE_PATH)

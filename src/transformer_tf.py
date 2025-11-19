@@ -66,15 +66,16 @@ class FeedForwardSubLayer(tf.keras.layers.Layer):
 class EncoderLayer(tf.keras.layers.Layer):
     def __init__(self, d_model, num_heads, d_ff, dropout, **kwargs):
         super(EncoderLayer, self).__init__(**kwargs)
-        self.d_model, self.num_heads, self.d_ff, self.dropout = d_model, num_heads, d_ff, dropout
+        self.d_model, self.num_heads, self.d_ff = d_model, num_heads, d_ff
+        self.dropout_rate = dropout # Store the float rate
         self.self_attn = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=d_model//num_heads)
         self.ff_sublayer = FeedForwardSubLayer(d_model, d_ff)
         
         self.norm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
         self.norm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
         
-        self.dropout1 = tf.keras.layers.Dropout(dropout)
-        self.dropout2 = tf.keras.layers.Dropout(dropout)
+        self.dropout1 = tf.keras.layers.Dropout(self.dropout_rate)
+        self.dropout2 = tf.keras.layers.Dropout(self.dropout_rate)
 
     def call(self, x, training, mask=None):
         attn_output = self.self_attn(query=x, value=x, key=x, attention_mask=mask)
@@ -93,7 +94,7 @@ class EncoderLayer(tf.keras.layers.Layer):
             "d_model": self.d_model,
             "num_heads": self.num_heads,
             "d_ff": self.d_ff,
-            "dropout": self.dropout,
+            "dropout": self.dropout_rate,
         })
         return config
 
@@ -101,17 +102,18 @@ class EncoderLayer(tf.keras.layers.Layer):
 class TransformerEncoder(tf.keras.Model):
     def __init__(self, d_model, num_layers, num_heads, d_ff, dropout, max_seq_length, **kwargs):
         super(TransformerEncoder, self).__init__(**kwargs)
-        self.d_model, self.num_layers, self.num_heads, self.d_ff, self.dropout, self.max_seq_length = d_model, num_layers, num_heads, d_ff, dropout, max_seq_length
+        self.d_model, self.num_layers, self.num_heads, self.d_ff, self.max_seq_length = d_model, num_layers, num_heads, d_ff, max_seq_length
+        self.dropout_rate = dropout # Store the float rate
         # This Dense layer projects the input features into the model's dimension (d_model)
         self.input_projection = tf.keras.layers.Dense(d_model)
         self.positional_encoding = PositionalEncoding(max_seq_length, d_model)
-        self.encoder_layers = [EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)]
-        self.dropout = tf.keras.layers.Dropout(dropout)
+        self.encoder_layers = [EncoderLayer(d_model, num_heads, d_ff, self.dropout_rate) for _ in range(num_layers)]
+        self.dropout_layer = tf.keras.layers.Dropout(self.dropout_rate)
 
     def call(self, x, training, mask=None):
         x = self.input_projection(x)
         x = self.positional_encoding(x)
-        x = self.dropout(x, training=training)
+        x = self.dropout_layer(x, training=training)
         
         for i, layer in enumerate(self.encoder_layers):
             x = layer(x, training=training, mask=mask)
@@ -125,7 +127,7 @@ class TransformerEncoder(tf.keras.Model):
             "num_layers": self.num_layers,
             "num_heads": self.num_heads,
             "d_ff": self.d_ff,
-            "dropout": self.dropout,
+            "dropout": self.dropout_rate,
             "max_seq_length": self.max_seq_length,
         })
         return config
