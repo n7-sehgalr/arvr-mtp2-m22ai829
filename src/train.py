@@ -215,7 +215,7 @@ def log_model_summary(model, summary_writer):
 
 def train(input_shape2, num_classes, learning_rate,data,
           batch_size, size, EPOCHS, SAVE_PATH,
-          restore,log,max_length,label_pad, model_type, log_histograms=False,
+          restore,log,max_length,label_pad, model_type, optimizer_name='adam', log_histograms=False,
           **kwargs):
 
     train1Data,valid1Data = tfdata1(data, batch_size, size)
@@ -262,16 +262,31 @@ def train(input_shape2, num_classes, learning_rate,data,
     # Calculate steps per epoch to make the LR schedule epoch-aware
     steps_per_epoch = number_train
 
-    # --- Setup Learning Rate Schedule and Optimizer ---
-    # The learning_rate from main.py is now the initial_learning_rate
-    step_based_schedule = CustomLearningRateSchedule(
-        initial_learning_rate=learning_rate,
-        mid_learning_rate=0.001,
-        final_learning_rate=0.0001,
-        decay_steps_1=100,
-        decay_steps_2=200)
-    epoch_aware_schedule = EpochAwareLearningRateSchedule(step_based_schedule, steps_per_epoch)
-    optimizer = keras.optimizers.AdamW(learning_rate=epoch_aware_schedule, weight_decay=1e-4)
+    # --- Setup Optimizer ---
+    # If starting a new run, use the learning rate schedule.
+    # If resuming, we will use the fixed learning rate passed from main.py.
+    if not restore:
+        # For a new run, just use the fixed learning rate for simplicity as requested.
+        # The schedule can be re-enabled here if needed.
+        lr_to_use = learning_rate
+        # step_based_schedule = CustomLearningRateSchedule(
+        #     initial_learning_rate=learning_rate,
+        #     mid_learning_rate=0.001,
+        #     final_learning_rate=0.0001,
+        #     decay_steps_1=100,
+        #     decay_steps_2=200)
+        # lr_to_use = EpochAwareLearningRateSchedule(step_based_schedule, steps_per_epoch)
+    else:
+        lr_to_use = learning_rate # Use the fixed value for fine-tuning
+
+    if optimizer_name.lower() == 'rmsprop':
+        optimizer = keras.optimizers.RMSprop(learning_rate=lr_to_use)
+    elif optimizer_name.lower() == 'adam':
+        optimizer = keras.optimizers.Adam(learning_rate=lr_to_use, beta_2=0.98)
+    elif optimizer_name.lower() == 'adamw':
+        optimizer = keras.optimizers.AdamW(learning_rate=lr_to_use, beta_2=0.98)
+    else: # Default to Adam
+        optimizer = keras.optimizers.Adam(learning_rate=lr_to_use)
 
     checkpoint = tf.train.Checkpoint(step = tf.Variable(1),
                                      model = model,
@@ -295,8 +310,6 @@ def train(input_shape2, num_classes, learning_rate,data,
         # status.assert_consumed() # This would raise an error if the optimizer state doesn't match.
         initial_epoch = int(checkpoint.step)
         log.info(f"Restored from {manager.latest_checkpoint}. Resuming training from epoch {initial_epoch}.")
-    else:
-        log.info("Initializing from scratch.")
 
     #------------------ inspection train mode ------------------
     train_loss_results = []
