@@ -146,7 +146,7 @@ def train_step(epoch, train1Data,model, optimizer,epoch_loss_avg, epoch_edit_dis
 def test(batch_size,model, log,label_pad, max_length, num_classes, summary_writer, step):
     input_data, label_data,seq_len_list,label_data_length = getDataTest(batch_size,label_pad, max_length, num_classes)
     start_time = time.time()
-    val_logits = model([input_data])
+    val_logits = model(input_data)
     inference_time = time.time() - start_time
     for _ in range(10):
         i = int(np.random.randint(0,len(label_data)))
