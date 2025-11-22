@@ -67,7 +67,7 @@ def run_experiments():
         'num_heads': [1, 2, 4, 8],
         'model_size_tuple': [(64, 256), (32, 128), (128, 512)],
         'dropout_rate': [0.1, 0.2, 0.3],
-        'learning_rate': [0.001, 0.0001, 0.00001],
+        'learning_rate': [0.001, 0.0001],
         'optimizer_name': ['adamw'],
         'batch_size': [64, 128]
     }
@@ -117,8 +117,8 @@ def run_experiments():
 
         exp_name = (f"L{config['layer_size']}_H{config['num_heads']}_D{config['d_model']}_F{config['d_ff']}_Dr{int(config['drop_out']*100)}_LR{learning_rate}_{optimizer_name.upper()}_BS{batch_size}")
 
+        print(f"\n--- Starting Trial {trial_num + 1} of {len(trials_to_run)} ---")
         print(f"\n{'='*20} RUNNING EXPERIMENT: {exp_name} {'='*20}")
-        
         # Define a unique directory for this specific run
         run_dir = f"models/hparams/{datetime.now().strftime('%Y%m%d-%H%M%S')}_{exp_name}"
         SAVE_PATH = f"{run_dir}/" # Checkpoints will be saved in a subfolder
