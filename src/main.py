@@ -52,53 +52,25 @@ def run_experiments():
     label_pad = 14
     input_dim = 39
     num_classes = 29
-    EPOCHS = 50 # Epochs per trial for the hyperparameter search.
+    EPOCHS = 200 # Epochs per trial for the hyperparameter search.
     model_type = 'transformer' # 'rnn' or 'transformer'
     load_model = True
     monitor = 'val_loss'
     restore = False # Set to False to start a new training run.
-    drop_out = 0.3
     size = -1
 
-    # --- Random Hyperparameter Search Loop ---
-    # 1. Define the entire search space
-    param_space = {
-        'num_layers': [1, 2, 3, 4],
-        'num_heads': [1, 2, 4, 8],
-        'model_size_tuple': [(64, 256), (32, 128), (128, 512)],
-        'dropout_rate': [0.1, 0.2, 0.3],
-        'learning_rate': [0.001, 0.0001],
-        'optimizer_name': ['adamw'],
-        'batch_size': [64, 128]
-    }
-
-    # 2. Generate all unique combinations (Cartesian product)
-    keys, values = zip(*param_space.items())
-    all_combinations = [dict(zip(keys, v)) for v in itertools.product(*values)]
-
-    # Define specific combinations to exclude from the search
-    excluded_combinations = [
-        {'num_layers': 2, 'num_heads': 8, 'model_size_tuple': (32, 128), 'dropout_rate': 0.1, 'learning_rate': 0.001},
-        {'num_layers': 2, 'num_heads': 1, 'model_size_tuple': (64, 256), 'dropout_rate': 0.3, 'learning_rate': 0.01},
-        {'num_layers': 2, 'num_heads': 8, 'model_size_tuple': (128, 512), 'dropout_rate': 0.2, 'learning_rate': 0.0001},
-        {'num_layers': 3, 'num_heads': 2, 'model_size_tuple': (32, 128), 'dropout_rate': 0.1, 'learning_rate': 0.0001},
-        {'num_layers': 2, 'num_heads': 1, 'model_size_tuple': (128, 512), 'dropout_rate': 0.3, 'learning_rate': 0.001},
-        {'num_layers': 3, 'num_heads': 1, 'model_size_tuple': (128, 512), 'dropout_rate': 0.2, 'learning_rate': 0.001},
-        {'num_layers': 1, 'num_heads': 2, 'model_size_tuple': (32, 128), 'dropout_rate': 0.3, 'learning_rate': 0.01},
+    # --- Specific Experiment Runs ---
+    # Define the list of experiments to run
+    trials_to_run = [
+        # Fixed LR experiments
+        {'num_layers': 2, 'num_heads': 8, 'd_model': 64, 'd_ff': 256, 'dropout_rate': 0.3, 'learning_rate': 0.001, 'optimizer_name': 'adamw', 'batch_size': 64, 'use_schedule': False},
+        {'num_layers': 2, 'num_heads': 1, 'd_model': 64, 'd_ff': 256, 'dropout_rate': 0.3, 'learning_rate': 0.001, 'optimizer_name': 'adamw', 'batch_size': 128, 'use_schedule': False},
+        {'num_layers': 4, 'num_heads': 4, 'd_model': 128, 'd_ff': 512, 'dropout_rate': 0.3, 'learning_rate': 0.001, 'optimizer_name': 'adamw', 'batch_size': 128, 'use_schedule': False},
+        {'num_layers': 3, 'num_heads': 1, 'd_model': 128, 'd_ff': 512, 'dropout_rate': 0.2, 'learning_rate': 0.001, 'optimizer_name': 'adamw', 'batch_size': 128, 'use_schedule': False},
+        {'num_layers': 3, 'num_heads': 1, 'd_model': 128, 'd_ff': 512, 'dropout_rate': 0.3, 'learning_rate': 0.001, 'optimizer_name': 'adamw', 'batch_size': 64, 'use_schedule': False},
+        # Scheduled LR experiment
+        {'num_layers': 3, 'num_heads': 1, 'd_model': 128, 'd_ff': 512, 'dropout_rate': 0.3, 'learning_rate': 0.001, 'optimizer_name': 'adamw', 'batch_size': 64, 'use_schedule': True},
     ]
-
-    # Filter out the excluded combinations
-    excluded_set = {tuple(sorted(d.items(), key=lambda item: item[0])) for d in excluded_combinations}
-    all_combinations = [c for c in all_combinations if tuple(sorted(c.items(), key=lambda item: item[0])) not in excluded_set]
-
-
-    # 3. Shuffle the combinations to make it a random search
-    random.shuffle(all_combinations)
-
-    # 4. Set the number of trials to run
-    NUM_SEARCH_TRIALS = 20
-    # Ensure we don't try to run more trials than available combinations
-    trials_to_run = all_combinations[:min(NUM_SEARCH_TRIALS, len(all_combinations))]
 
     data = getDataTrain1(label_pad, max_length, num_classes)
 
@@ -107,15 +79,19 @@ def run_experiments():
             "model_type": "transformer_tf",
             "layer_size": params['num_layers'],
             "num_heads": params['num_heads'],
-            "d_model": params['model_size_tuple'][0],
-            "d_ff": params['model_size_tuple'][1],
+            "d_model": params['d_model'],
+            "d_ff": params['d_ff'],
             "drop_out": params['dropout_rate']
         }
         learning_rate = params['learning_rate']
         optimizer_name = params['optimizer_name']
         batch_size = params['batch_size']
+        use_schedule = params['use_schedule']
 
-        exp_name = (f"L{config['layer_size']}_H{config['num_heads']}_D{config['d_model']}_F{config['d_ff']}_Dr{int(config['drop_out']*100)}_LR{learning_rate}_{optimizer_name.upper()}_BS{batch_size}")
+        exp_name = (f"L{config['layer_size']}_H{config['num_heads']}_D{config['d_model']}_F{config['d_ff']}_"
+                    f"Dr{int(config['drop_out']*100)}_LR{learning_rate}_{optimizer_name.upper()}_BS{batch_size}")
+        if use_schedule:
+            exp_name += "_SchedLR"
 
         print(f"\n--- Starting Trial {trial_num + 1} of {len(trials_to_run)} ---")
         print(f"\n{'='*20} RUNNING EXPERIMENT: {exp_name} {'='*20}")
@@ -149,7 +125,7 @@ def run_experiments():
             hp.hparams(hparams)
 
             # Run training and evaluation
-            train(input_dim, num_classes, learning_rate, data, batch_size, size, EPOCHS, SAVE_PATH, restore, logging, max_length, label_pad, optimizer_name=optimizer_name, **config)
+            train(input_dim, num_classes, learning_rate, data, batch_size, size, EPOCHS, SAVE_PATH, restore, logging, max_length, label_pad, optimizer_name=optimizer_name, use_schedule=use_schedule, **config)
             final_metrics = eval(SAVE_PATH, batch_size, logging, label_pad, max_length, num_classes)
 
             # Log the final metrics to associate them with the hparams

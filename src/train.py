@@ -100,6 +100,38 @@ class EpochAwareLearningRateSchedule(tf.keras.optimizers.schedules.LearningRateS
         epoch = step / self.steps_per_epoch
         return self.schedule(epoch)
 
+class WarmupDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    """
+    Implements a linear warmup followed by a linear decay schedule.
+    - Warmup phase: Linearly increases LR from 0 to peak_lr.
+    - Decay phase: Linearly decreases LR from peak_lr to end_lr.
+    """
+    def __init__(self, peak_lr, end_lr, warmup_steps, decay_steps, name=None):
+        super(WarmupDecaySchedule, self).__init__()
+        self.peak_lr = tf.cast(peak_lr, tf.float32)
+        self.end_lr = tf.cast(end_lr, tf.float32)
+        self.warmup_steps = tf.cast(warmup_steps, tf.float32)
+        self.decay_steps = tf.cast(decay_steps, tf.float32)
+        self.total_steps = self.warmup_steps + self.decay_steps
+
+    def __call__(self, step):
+        step = tf.cast(step, tf.float32)
+
+        def warmup_fn():
+            return self.peak_lr * (step / self.warmup_steps)
+
+        def decay_fn():
+            # Progress within the decay phase (from 0.0 to 1.0)
+            decay_progress = (step - self.warmup_steps) / self.decay_steps
+            # Linearly interpolate from peak_lr down to end_lr
+            return self.peak_lr - decay_progress * (self.peak_lr - self.end_lr)
+
+        return tf.cond(
+            step < self.warmup_steps,
+            warmup_fn,
+            lambda: tf.cond(step < self.total_steps, decay_fn, lambda: self.end_lr)
+        )
+
 
 # @tf.function
 def to_dense(tensor):
@@ -215,7 +247,7 @@ def log_model_summary(model, summary_writer):
 
 def train(input_shape2, num_classes, learning_rate,data,
           batch_size, size, EPOCHS, SAVE_PATH,
-          restore,log,max_length,label_pad, model_type, optimizer_name='adam', log_histograms=False,
+          restore,log,max_length,label_pad, model_type, optimizer_name='adam', use_schedule=False, log_histograms=False,
           **kwargs):
 
     train1Data,valid1Data = tfdata1(data, batch_size, size)
@@ -265,28 +297,29 @@ def train(input_shape2, num_classes, learning_rate,data,
     # --- Setup Optimizer ---
     # If starting a new run, use the learning rate schedule.
     # If resuming, we will use the fixed learning rate passed from main.py.
-    if not restore:
-        # For a new run, just use the fixed learning rate for simplicity as requested.
-        # The schedule can be re-enabled here if needed.
-        lr_to_use = learning_rate
-        # step_based_schedule = CustomLearningRateSchedule(
-        #     initial_learning_rate=learning_rate,
-        #     mid_learning_rate=0.001,
-        #     final_learning_rate=0.0001,
-        #     decay_steps_1=100,
-        #     decay_steps_2=200)
-        # lr_to_use = EpochAwareLearningRateSchedule(step_based_schedule, steps_per_epoch)
+    if use_schedule and not restore:
+        log.info("Using Warmup+Decay learning rate schedule.")
+        warmup_epochs = 5
+        decay_epochs = EPOCHS - warmup_epochs
+        
+        lr_to_use = WarmupDecaySchedule(
+            peak_lr=learning_rate, # The LR from hparam search is now the peak LR
+            end_lr=1e-5,           # The final learning rate after decay
+            warmup_steps=warmup_epochs * steps_per_epoch,
+            decay_steps=decay_epochs * steps_per_epoch
+        )
     else:
-        lr_to_use = learning_rate # Use the fixed value for fine-tuning
+        log.info(f"Using fixed learning rate: {learning_rate}")
+        lr_to_use = learning_rate
 
     if optimizer_name.lower() == 'rmsprop':
         optimizer = keras.optimizers.RMSprop(learning_rate=lr_to_use)
     elif optimizer_name.lower() == 'adam':
-        optimizer = keras.optimizers.Adam(learning_rate=lr_to_use, beta_2=0.98)
-    elif optimizer_name.lower() == 'adamw':
-        optimizer = keras.optimizers.AdamW(learning_rate=lr_to_use, beta_2=0.98)
-    else: # Default to Adam
         optimizer = keras.optimizers.Adam(learning_rate=lr_to_use)
+    elif optimizer_name.lower() == 'adamw':
+        optimizer = keras.optimizers.AdamW(learning_rate=lr_to_use, beta_1=0.95)
+    else: # Default to Adam
+        optimizer = keras.optimizers.Adam(learning_rate=lr_to_use, beta_1=0.95)
 
     checkpoint = tf.train.Checkpoint(step = tf.Variable(1),
                                      model = model,
